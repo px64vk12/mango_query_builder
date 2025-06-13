@@ -133,48 +133,72 @@ class CouchDB_Manger:
             for key,value in zip(keys,values): doc[key] = value
             table.save(doc)
 
-    def create_index (self, table, index_name): # 조회속도 향상
-        response = requests.post(
-            f"http://{self.ip}:{self.port}/{table.name}/_index",
-            headers={"Content-Type": "application/json"},
-            auth=(self.user, self.password),
-            data=json.dumps({
-                "index": {"fields": [index_name]},
-                "name": f"{index_name}_idx",
-                "type": "json" }))
-        print(response.status_code, response.json())
-
     def clean_cache(self,table): # 물리적 데이터 정리
         table.compact()
         table.cleanup()
 
 
+    def create_index (self, table, index_name): # indexing 조회속도 향상
+        self.request_db(f"/{table.name}/_index", {
+                "index": {"fields": [index_name]},
+                "name": f"{index_name}_idx",
+                "type": "json" })
+
+    def bulk_insert (self, table, docs): # 한번에 적재
+        self.request_db(f"/{table.name}/_bulk_docs", {"docs": docs})
 
 
-# 4 data = 1kb -> 4000data = 1mb -> 4000000data = 1gb -> 4000000
+    def request_db (self, url, data):
+        response = requests.post(
+            f"http://{self.ip}:{self.port}/{url}",
+            headers={"Content-Type": "application/json"},
+            auth=(self.user, self.password),
+            data=json.dumps(data))
+        #print(response.status_code
+        return response.json()
 
+
+
+
+# benchmark
+# meta_data 1mb         : 5000docs
+# read speed            : 10000docs / 1sec
+# single insert speed   : 10000docs - 200sec, 50docs / 1sec
+# bulk insert speed (100개씩): 10000 docs - 5.4sec, 2000docs /1sec
 
 if __name__ == "__main__":
     dbm = CouchDB_Manger(db_name="test")
     task_table = dbm.tables['task']
 
     dbm.create_index(task_table, "created_time")
-    ts = time.time()
-    for i in range(1000):
-        now_str = get_now_str()
-        dbm.insert(task_table,{"task_name":"task2", "created_time":now_str})
-    print(time.time() - ts)
 
-    print(task_table.index())
 
-    mquery = mango_query_builder (
-        ('task_name','like','tas'),
-        sort = ('created_time', 'asc'),
-        limit = 5,
-    )
-    datas = dbm.select(task_table, mquery)
-    for data in datas:
-        print(data)
+    if 0: # single insert test
+        ts = time.time()
+        for i in range(10000):
+            now_str = get_now_str()
+            dbm.insert(task_table,{"task_name":"task2", "created_time":now_str, })
+            if i%500 == 0: print(time.time() - ts)
+
+    if 1: # bulk insert test
+        ts = time.time()
+        for i in range(100):
+            now_str = get_now_str()
+            datas = [{"task_name":"task2", "created_time":now_str}
+                     for i in range(100) ]
+            dbm.bulk_insert(task_table,datas)
+            if i%5 == 0: print(time.time() - ts)
+
+
+    if 1: # select test
+        mquery = mango_query_builder (
+            ('task_name','like','tas'),
+            sort = ('created_time', 'asc'),
+        )
+        ts = time.time()
+        datas = dbm.select(task_table, mquery)
+        print(time.time() - ts)
+        print(len(datas))
 
     dbm.clean_cache(task_table)
     
