@@ -154,11 +154,12 @@ class CouchDB_Manger:
             headers={"Content-Type": "application/json"},
             auth=(self.user, self.password),
             data=json.dumps(data))
-        #print(response.status_code
+        #print(response.status_code)
         return response.json()
 
-
-
+# 15hz * 120sec image = 1.6gb
+# 15hz * 120sec H.264 = 30mb
+# 1000 episode = 30mb * 1000 = 30gb
 
 # benchmark
 # meta_data 1mb         : 5000docs
@@ -169,7 +170,6 @@ class CouchDB_Manger:
 if __name__ == "__main__":
     dbm = CouchDB_Manger(db_name="test")
     task_table = dbm.tables['task']
-
     dbm.create_index(task_table, "created_time")
 
 
@@ -179,6 +179,7 @@ if __name__ == "__main__":
             now_str = get_now_str()
             dbm.insert(task_table,{"task_name":"task2", "created_time":now_str, })
             if i%500 == 0: print(time.time() - ts)
+
 
     if 1: # bulk insert test
         ts = time.time()
@@ -199,6 +200,7 @@ if __name__ == "__main__":
         datas = dbm.select(task_table, mquery)
         print(time.time() - ts)
         print(len(datas))
+
 
     dbm.clean_cache(task_table)
     
