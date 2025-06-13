@@ -98,7 +98,9 @@ class CouchDB_Manger:
             'etc': server[f"{db_name}_etc"], }
 
 
-    def insert (self, table, doc):     return table.save(doc) # doc_ip, doc_rev
+    def insert (self, table, doc):     
+        return table.save(doc) # doc_ip, doc_rev
+    
     def delete (self, table, mango_query):  
         for doc in table.find(mango_query): table.delete(doc)
 
@@ -110,20 +112,31 @@ class CouchDB_Manger:
             for key,value in zip(keys,values): doc[key] = value
             table.save(doc)
 
-    def clean_cache(table): # 물리적 데이터 정리
+    def clean_cache(self,table): # 물리적 데이터 정리
         table.compact()
         table.cleanup()
 
+
+from datetime import datetime
 
 
 if __name__ == "__main__":
     dbm = CouchDB_Manger(db_name="test")
     task_table = dbm.tables['task']
 
-    dbm.insert(task_table,{"task_name":"task2", "created_time":[1,2,3,4]})
+    for i in range(10):
+        now = datetime.now()
+        now_str = datetime.strftime(now, "%Y-%m-%d %H:%M:%S.%f")
+        dbm.insert(task_table,{"task_name":"task2", "created_time":now_str})
 
-    mquery = mango_query_builder(
-        ('task_name','like','tas'),
-    )
-    print(dbm.select(task_table, mquery))
+        mquery = mango_query_builder(
+            ('task_name','like','tas'),
+        )
+        datas = dbm.select(task_table, mquery)
+
+
+    dbm.clean_cache(task_table)
+    
+
+
 
