@@ -1,6 +1,15 @@
 import couchdb
 import requests
-from requests.auth import HTTPBasicAuth
+from datetime import datetime
+import json
+import time
+
+
+
+def get_now_str ():
+    now = datetime.now()
+    now_str = datetime.strftime(now, "%Y-%m-%d %H:%M:%S.%f")
+    return now_str
 
 
 
@@ -40,6 +49,16 @@ def get_mango_query (key, logic, value):
 
 
 def mango_query_builder (selector, limit=None, sort=None):
+    """
+    mango_query_builder(
+        (None, 'and', [
+            ('task_name','like','tas'),
+            ('task_name','==','task2'),
+        ]),
+        limit = 100,
+        sort = ('task_name', 'asc') # 'desc'
+    )
+    """
     def recursion_query (conds):
         querys = []
         for i in range(len(conds[2])):
@@ -78,8 +97,10 @@ def mango_query_builder (selector, limit=None, sort=None):
 # table : {DB_Name}_{Table_Name} : table이 없기에, DB에 이름으로 구분
 class CouchDB_Manger:
     def __init__(self, db_name):
-        ip, port = "192.168.17.51", "5984"
-        self.server = couchdb.Server(f"http://admin:password@{ip}:{port}/")
+        self.ip, self.port = "192.168.17.51", "5984"
+        self.user, self.password = "admin", "password"
+        self.server = couchdb.Server(f"http://{self.user}:{self.password}@{self.ip}:{self.port}/")
+
         self.tables = self.get_tables(db_name)
 
 
@@ -112,28 +133,48 @@ class CouchDB_Manger:
             for key,value in zip(keys,values): doc[key] = value
             table.save(doc)
 
+    def create_index (self, table, index_name): # 조회속도 향상
+        response = requests.post(
+            f"http://{self.ip}:{self.port}/{table.name}/_index",
+            headers={"Content-Type": "application/json"},
+            auth=(self.user, self.password),
+            data=json.dumps({
+                "index": {"fields": [index_name]},
+                "name": f"{index_name}_idx",
+                "type": "json" }))
+        print(response.status_code, response.json())
+
     def clean_cache(self,table): # 물리적 데이터 정리
         table.compact()
         table.cleanup()
 
 
-from datetime import datetime
+
+
+# 4 data = 1kb -> 4000data = 1mb -> 4000000data = 1gb -> 4000000
 
 
 if __name__ == "__main__":
     dbm = CouchDB_Manger(db_name="test")
     task_table = dbm.tables['task']
 
-    for i in range(10):
-        now = datetime.now()
-        now_str = datetime.strftime(now, "%Y-%m-%d %H:%M:%S.%f")
+    dbm.create_index(task_table, "created_time")
+    ts = time.time()
+    for i in range(1000):
+        now_str = get_now_str()
         dbm.insert(task_table,{"task_name":"task2", "created_time":now_str})
+    print(time.time() - ts)
 
-        mquery = mango_query_builder(
-            ('task_name','like','tas'),
-        )
-        datas = dbm.select(task_table, mquery)
+    print(task_table.index())
 
+    mquery = mango_query_builder (
+        ('task_name','like','tas'),
+        sort = ('created_time', 'asc'),
+        limit = 5,
+    )
+    datas = dbm.select(task_table, mquery)
+    for data in datas:
+        print(data)
 
     dbm.clean_cache(task_table)
     
